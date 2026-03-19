@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tablet Master Control</title>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #eee; margin: 0; padding: 15px; }
+        
+        /* 入力画面（ヘッダー固定） */
+        .add-panel { 
+            background: #fff; padding: 15px; border-radius: 12px; 
+            margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+            display: flex; gap: 10px; align-items: center; 
+            position: sticky; top: 10px; z-index: 100;
+        }
+        .add-panel input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
+        .add-panel button { padding: 12px 20px; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        
+        #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px; }
+        .card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .v-wrap { background: #000; aspect-ratio: 16/9; position: relative; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        .vol-btn { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.6); color: #fff; border: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 10; cursor: pointer; }
+        .pc-header { padding: 10px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; background: #f8f8f8; border-bottom: 1px solid #eee; }
+        .log-box { height: 60px; overflow-y: auto; font-size: 11px; padding: 8px; background: #fff; color: #666; }
+        
+        details { padding: 10px; border-top: 1px solid #eee; }
+        summary { cursor: pointer; color: #007bff; font-weight: bold; outline: none; padding: 5px; }
+        .controls { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; }
+        .controls button { padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; }
+        .status-tag { font-size: 10px; padding: 2px 6px; border-radius: 10px; background: #ccc; color: #fff; }
+        .status-online { background: #28a745; }
+    </style>
+</head>
+<body>
+
+    <div class="add-panel">
+        <input type="text" id="target-id" placeholder="PCの名前を入力 (例: pc-001)">
+        <button onclick="addNewMonitor()">モニターを追加</button>
+    </div>
+
+    <div id="grid"></div>
+
+    <script>
+    const peer = new Peer('tablet-master');
+    let pcStreams = {}, connections = {}, localStream, isRecording = {};
+    
+    // ブラウザに保存されているリストを読み込む
+    let savedPCs = JSON.parse(localStorage.getItem('my_monitors') || "[]");
+
+    // ページ読み込み時に実行
+    window.onload = () => {
+        // 保存されていたPCがあれば、その台数分カードを作る
+        savedPCs.forEach(id => {
+            createCardUI(id);
+            setTimeout(() => startConnect(id), 1000); // 準備時間を置いて自動接続
+        });
+    };
+
+    // マイク準備
+    navigator.mediaDevices.getUserMedia({audio:true}).then(s => {
+        localStream = s;
+        localStream.getAudioTracks()[0].enabled = false;
+    }).catch(e => console.error("マイク許可がありません", e));
+
+    // Peer通信のエラーハンドリング
+    peer.on('error', err => {
+        console.error("PeerJSエラー:", err.type);
+    });
+
+    // 「モニターを追加」ボタンを押したとき
+    function addNewMonitor() {
+        const id = document.getElementById('target-id').value.trim();
+        if (!id) return;
+        if (savedPCs.includes(id)) {
+            alert("そのIDは既に追加されています");
+            return;
+        }
+
+        // リストに保存
+        savedPCs.push(id);
+        localStorage.setItem('my_monitors', JSON.stringify(savedPCs));
+        
+        // カード作成
+        createCardUI(id);
+        // 接続開始
+        startConnect(id);
+        
+        document.getElementById('target-id').value = ""; // 入力欄をクリア
+    }
+
+    // カードの見た目を作る
+    function createCardUI(id) {
+        if (document.getElementById(`card-${id}`)) return;
+
+        const grid = document.getElementById('grid');
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.id = `card-${id}`;
+        card.innerHTML = `
+            <div class="pc-header">
+                <span>Unit: ${id} <span id="status-${id}" class="status-tag">オフライン</span></span>
+                <button onclick="removeCard('${id}')" style="background:none; border:none; color:#999; cursor:pointer; font-size:18px;">✕</button>
+            </div>
+            <div class="v-wrap">
+                <video id="video-${id}" autoplay playsinline muted></video>
+                <button class="vol-btn" onclick="toggleVol('${id}', this)">消音中</button>
+            </div>
+            <div id="log-${id}" class="log-box">接続を待機しています...</div>
+            <details>
+                <summary>操作パネル</summary>
+                <div class="controls">
+                    <button style="background:#007bff;" onclick="startConnect('${id}')">再接続・映像再開</button>
+                    <button id="mic-${id}" style="background:#6c757d;" onclick="toggleMic('${id}')">マイク: OFF</button>
+                    <input type="text" id="text-${id}" placeholder="読み上げテキスト" style="padding:10px; border:1px solid #ddd; border-radius:6px;">
+                    <button style="background:#28a745;" onclick="sendText('${id}')">音声送信</button>
+                </div>
+            </details>
+        `;
+        grid.appendChild(card);
+    }
+
+    // 接続・再試行ロジック
+    function startConnect(id) {
+        const statusTag = document.getElementById(`status-${id}`);
+        const logBox = document.getElementById(`log-${id}`);
+        
+        // 1. 映像を呼ぶ
+        const call = peer.call(id, localStream);
+        call.on('stream', s => {
+            const v = document.getElementById(`video-${id}`);
+            if(v) v.srcObject = s;
+            pcStreams[id] = s;
+            statusTag.innerText = "オンライン";
+            statusTag.className = "status-tag status-online";
+        });
+
+        // 2. データ接続を作る
+        const conn = peer.connect(id);
+        connections[id] = conn;
+
+        conn.on('open', () => {
+            logBox.innerText = "通信確立完了";
+        });
+
+        conn.on('data', data => {
+            if (data.type === 'MOTION') updateLog(id, data.time);
+        });
+
+        conn.on('close', () => {
+            statusTag.innerText = "切断";
+            statusTag.className = "status-tag";
+            // 10秒後に自動再接続を試みる
+            setTimeout(() => startConnect(id), 10000);
+        });
+
+        // 相手が見つからない場合のエラー
+        conn.on('error', (err) => {
+            logBox.innerText = "PCが見つかりません(待機中...)";
+            setTimeout(() => startConnect(id), 15000);
+        });
+    }
+
+    function updateLog(id, time) {
+        const l = document.getElementById(`log-${id}`);
+        if(l) {
+            l.innerHTML = `<div>● ${time} 動き検知・自動録画</div>` + l.innerHTML;
+            if(pcStreams[id]) autoRec(id, pcStreams[id]);
+        }
+    }
+
+    function toggleVol(id, btn) {
+        const v = document.getElementById(`video-${id}`);
+        v.muted = !v.muted;
+        btn.innerText = v.muted ? "消音中" : "音出し中";
+    }
+
+    function toggleMic(id) {
+        const track = localStream.getAudioTracks()[0];
+        track.enabled = !track.enabled;
+        const btn = document.getElementById(`mic-${id}`);
+        btn.innerText = track.enabled ? "マイク: ON" : "マイク: OFF";
+        btn.style.background = track.enabled ? "#dc3545" : "#6c757d";
+    }
+
+    function autoRec(id, stream) {
+        if (isRecording[id]) return;
+        isRecording[id] = true;
+        const mr = new MediaRecorder(stream);
+        const chunks = [];
+        mr.ondataavailable = e => chunks.push(e.data);
+        mr.onstop = () => {
+            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(chunks));
+            a.download = `rec_${id}_${Date.now()}.webm`; a.click();
+            isRecording[id] = false;
+        };
+        mr.start(); setTimeout(() => { if(mr.state!=="inactive") mr.stop(); }, 10000);
+    }
+
+    function sendText(id) {
+        const t = document.getElementById(`text-${id}`);
+        if(connections[id] && connections[id].open) {
+            connections[id].send(t.value);
+            t.value = "";
+        }
+    }
+
+    // 完全に削除
+    function removeCard(id) {
+        if(confirm(id + " の登録を完全に削除しますか？")) {
+            savedPCs = savedPCs.filter(p => p !== id);
+            localStorage.setItem('my_monitors', JSON.stringify(savedPCs));
+            const card = document.getElementById(`card-${id}`);
+            if(card) card.remove();
+            if(connections[id]) connections[id].close();
+        }
+    }
+    </script>
+</body>
+</html>
