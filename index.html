@@ -1,0 +1,63 @@
+<script>
+    let peer, localStream, tabletConn;
+    const targetMasterId = 'tablet-master'; // タブレット側の固定ID
+
+    async function startUnit() {
+        const myId = document.getElementById('pc-id').value;
+        localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
+        
+        peer = new Peer(myId);
+
+        peer.on('open', (id) => {
+            console.log("ユニット起動完了:", id);
+            attemptConnect(); // 起動時に接続試行
+        });
+
+        // 断線時の自動再起動
+        peer.on('disconnected', () => {
+            console.log("Peerサーバから切断。再接続中...");
+            peer.reconnect();
+        });
+
+        peer.on('error', (err) => {
+            console.error("Peerエラー:", err);
+            if(err.type === 'peer-unavailable') {
+                // タブレットが見つからない場合は10秒後にリトライ
+                setTimeout(attemptConnect, 10000);
+            }
+        });
+
+        // 呼び出し（着信）への応答
+        peer.on('call', call => {
+            call.answer(localStream);
+            call.on('stream', rem => {
+                const a = document.createElement('audio'); a.srcObject = rem; a.autoplay = true; document.body.appendChild(a);
+            });
+        });
+    }
+
+    // タブレットへ自分から繋ぎにいく（JOIN信号と動体検知用）
+    function attemptConnect() {
+        if (tabletConn && tabletConn.open) return;
+        
+        tabletConn = peer.connect(targetMasterId);
+        tabletConn.on('open', () => {
+            console.log("タブレットに接続成功");
+            tabletConn.send({type: 'JOIN', id: peer.id});
+        });
+
+        tabletConn.on('close', () => {
+            console.log("タブレットとの通信が切れました。5秒後に再試行...");
+            setTimeout(attemptConnect, 5000);
+        });
+    }
+
+    // 動体検知時も接続が生きているか確認してから送る
+    function sendMotion(time) {
+        if (tabletConn && tabletConn.open) {
+            tabletConn.send({type: 'MOTION', id: peer.id, time: time});
+        } else {
+            attemptConnect(); // 切れてたら繋ぎ直す
+        }
+    }
+</script>
