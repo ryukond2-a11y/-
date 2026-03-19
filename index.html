@@ -1,63 +1,80 @@
-<script>
-    let peer, localStream, tabletConn;
-    const targetMasterId = 'tablet-master'; // タブレット側の固定ID
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>PC Unit - Debug Mode</title>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #121212; color: #e0e0e0; text-align: center; padding: 20px; }
+        #error-log { color: #ff6b6b; background: #2a1010; padding: 10px; border-radius: 5px; margin: 10px; display: none; }
+        .setup { background: #1e1e1e; padding: 20px; border-radius: 12px; border: 1px solid #333; display: inline-block; }
+        video { width: 100%; max-width: 400px; border-radius: 10px; margin-top: 20px; border: 1px solid #333; display:none; }
+    </style>
+</head>
+<body>
+    <h1>PC Camera Unit</h1>
+    <div id="error-log"></div>
+
+    <div class="setup" id="setup-area">
+        <input type="text" id="pc-id" value="pc-001" style="padding:10px;">
+        <button onclick="startUnit()" style="padding:10px 20px; background:#00d1b2; border:none; color:white; font-weight:bold; cursor:pointer;">監視ユニットとして起動</button>
+    </div>
+
+    <div id="main-area" style="display:none;">
+        <h2 id="name-display"></h2>
+        <video id="localVideo" autoplay playsinline muted></video>
+    </div>
+
+    <script>
+    // エラーを表示する関数
+    function showError(msg) {
+        const errDiv = document.getElementById('error-log');
+        errDiv.style.display = 'block';
+        errDiv.innerText = "エラー発生: " + msg;
+    }
+
+    // PeerJSが読み込めているかチェック
+    window.onerror = function(msg) { showError(msg); };
+
+    let peer, localStream;
 
     async function startUnit() {
-        const myId = document.getElementById('pc-id').value;
-        localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
-        
-        peer = new Peer(myId);
-
-        peer.on('open', (id) => {
-            console.log("ユニット起動完了:", id);
-            attemptConnect(); // 起動時に接続試行
-        });
-
-        // 断線時の自動再起動
-        peer.on('disconnected', () => {
-            console.log("Peerサーバから切断。再接続中...");
-            peer.reconnect();
-        });
-
-        peer.on('error', (err) => {
-            console.error("Peerエラー:", err);
-            if(err.type === 'peer-unavailable') {
-                // タブレットが見つからない場合は10秒後にリトライ
-                setTimeout(attemptConnect, 10000);
+        try {
+            const myId = document.getElementById('pc-id').value;
+            if (typeof Peer === 'undefined') {
+                showError("PeerJSライブラリが読み込めていません。ネット接続を確認してください。");
+                return;
             }
-        });
 
-        // 呼び出し（着信）への応答
-        peer.on('call', call => {
-            call.answer(localStream);
-            call.on('stream', rem => {
-                const a = document.createElement('audio'); a.srcObject = rem; a.autoplay = true; document.body.appendChild(a);
+            document.getElementById('setup-area').style.display = 'none';
+            document.getElementById('main-area').style.display = 'block';
+            document.getElementById('name-display').innerText = "起動中: " + myId;
+
+            // カメラ・マイク取得
+            localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
+            const video = document.getElementById('localVideo');
+            video.srcObject = localStream;
+            video.style.display = "inline-block";
+
+            peer = new Peer(myId);
+
+            peer.on('open', (id) => {
+                document.getElementById('name-display').innerText = "オンライン: " + id;
             });
-        });
-    }
 
-    // タブレットへ自分から繋ぎにいく（JOIN信号と動体検知用）
-    function attemptConnect() {
-        if (tabletConn && tabletConn.open) return;
-        
-        tabletConn = peer.connect(targetMasterId);
-        tabletConn.on('open', () => {
-            console.log("タブレットに接続成功");
-            tabletConn.send({type: 'JOIN', id: peer.id});
-        });
+            peer.on('error', (err) => showError("Peerエラー: " + err.type));
 
-        tabletConn.on('close', () => {
-            console.log("タブレットとの通信が切れました。5秒後に再試行...");
-            setTimeout(attemptConnect, 5000);
-        });
-    }
+            peer.on('call', call => {
+                call.answer(localStream);
+                call.on('stream', rem => {
+                    const a = document.createElement('audio'); a.srcObject = rem; a.autoplay = true; document.body.appendChild(a);
+                });
+            });
 
-    // 動体検知時も接続が生きているか確認してから送る
-    function sendMotion(time) {
-        if (tabletConn && tabletConn.open) {
-            tabletConn.send({type: 'MOTION', id: peer.id, time: time});
-        } else {
-            attemptConnect(); // 切れてたら繋ぎ直す
+        } catch (e) {
+            showError("起動失敗: " + e.message);
         }
     }
-</script>
+    </script>
+</body>
+</html>
