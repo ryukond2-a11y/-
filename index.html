@@ -3,121 +3,118 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lab Sync System</title>
+    <title>Lab System - Fix</title>
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: sans-serif; background: #f0f2f5; margin: 0; padding: 15px; text-align: center; }
-        .setup-box { background: white; padding: 30px; border-radius: 15px; shadow: 0 4px 10px rgba(0,0,0,0.1); display: inline-block; margin-top: 50px; }
-        .btn { padding: 15px 30px; border: none; border-radius: 50px; font-weight: bold; cursor: pointer; color: white; margin: 10px; font-size: 16px; }
+        body { font-family: sans-serif; background: #121212; color: #fff; text-align: center; margin: 0; padding: 20px; }
+        .box { background: #222; padding: 30px; border-radius: 15px; display: inline-block; margin-top: 50px; border: 1px solid #444; }
+        .btn { padding: 15px 30px; border: none; border-radius: 50px; font-weight: bold; cursor: pointer; color: white; margin: 10px; font-size: 16px; transition: 0.2s; }
         .btn-pc { background: #00d1b2; }
         .btn-tab { background: #007bff; }
-        
-        #ui-area { display: none; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px; margin-top: 20px; }
-        .card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: left; }
-        .v-wrap { background: #000; aspect-ratio: 16/9; position: relative; }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        .controls { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-        .log-box { height: 60px; overflow-y: auto; font-size: 11px; padding: 8px; background: #f9f9f9; border-radius: 5px; }
-        .status-bar { padding: 10px; background: #333; color: #fff; border-radius: 8px; font-size: 13px; }
+        .btn:active { transform: scale(0.95); }
+        #log { margin-top: 20px; font-size: 13px; color: #888; min-height: 1.5em; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; margin-top: 20px; }
+        .card { background: #333; border-radius: 10px; overflow: hidden; text-align: left; }
+        video { width: 100%; aspect-ratio: 16/9; background: #000; }
         canvas { display: none; }
     </style>
 </head>
 <body>
 
-    <div id="setup-screen" class="setup-box">
-        <h2>システムを開始</h2>
-        <p>役割を選んでください</p>
-        <button class="btn btn-pc" onclick="start('camera')">📷 カメラとして使う</button>
-        <button class="btn btn-tab" onclick="start('monitor')">📱 モニターとして使う</button>
+    <div id="setup-screen" class="box">
+        <h2>システム開始</h2>
+        <p>ボタンを押すとカメラ・マイクの確認が始まります</p>
+        <button class="btn btn-pc" onclick="init('camera')">📷 カメラとして起動</button>
+        <button class="btn btn-tab" onclick="init('monitor')">📱 モニターとして起動</button>
+        <div id="log"></div>
     </div>
 
-    <div id="ui-area">
-        <div class="status-bar" id="status">準備中...</div>
-        <div class="grid" id="main-grid"></div>
-        <video id="local-dummy" autoplay playsinline muted style="width:100px; display:none;"></video>
-        <canvas id="comp-canvas"></canvas>
+    <div id="main-ui" style="display:none;">
+        <h3 id="status-text">起動中...</h3>
+        <div class="grid" id="grid"></div>
+        <video id="preview" autoplay playsinline muted style="width:200px; border-radius:10px; margin-top:10px;"></video>
     </div>
+
+    <canvas id="comp-canvas"></canvas>
 
     <script>
-    // ★重要：ここを自分だけの名前に変えてください（例：ryukon-lab-2026）
-    const SYNC_ID = 'ryukon-lab-master-system'; 
-    
-    let peer, localStream, mode;
-    let activeUnits = new Set();
+    const SYNC_ID = 'ryukon-lab-sync-2026'; 
+    let peer, localStream, myMode;
 
-    async function start(selectedMode) {
-        mode = selectedMode;
-        document.getElementById('setup-screen').style.display = 'none';
-        document.getElementById('ui-area').style.display = 'block';
-        
-        // カメラ・マイクの起動
+    function updateLog(msg) { document.getElementById('log').innerText = msg; }
+
+    async function init(mode) {
+        myMode = mode;
+        updateLog("デバイスを呼び出し中...");
+
+        // 🟢 ユーザーがボタンを押した「この瞬間」にだけ許可ダイアログは有効になります
         try {
-            localStream = await navigator.mediaDevices.getUserMedia({video: (mode==='camera'), audio: true});
-            if(mode === 'camera') document.getElementById('local-dummy').srcObject = localStream;
+            // モニターならマイクのみ、カメラなら両方
+            const constraints = { video: (mode === 'camera'), audio: true };
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('main-ui').style.display = 'block';
+            
+            if(mode === 'camera') {
+                document.getElementById('preview').srcObject = localStream;
+            }
+            startPeer();
         } catch (e) {
-            console.log("メディア制限あり");
-            localStream = new MediaStream();
+            console.error(e);
+            updateLog("エラー: カメラが見つからないか、拒否されました。設定を確認してリロードしてください。");
         }
+    }
 
-        // モニターなら固定ID、カメラならランダムID
-        peer = (mode === 'monitor') ? new Peer(SYNC_ID) : new Peer();
+    function startPeer() {
+        // モニターは固定ID、カメラはランダムID
+        peer = (myMode === 'monitor') ? new Peer(SYNC_ID) : new Peer();
 
         peer.on('open', id => {
-            document.getElementById('status').innerText = `${mode}起動中: ${id}`;
-            if(mode === 'camera') {
-                // カメラ側：モニターを探して自分を登録
-                setInterval(reportToMonitor, 5000); 
-                startMotionDetection();
+            document.getElementById('status-text').innerText = `${myMode}モード: ${id}`;
+            if(myMode === 'camera') {
+                setInterval(report, 5000); // モニターへ通知
+                startMotion();
             }
         });
 
-        // 共通：着信処理
+        // 映像が届いたとき（モニター側）
         peer.on('call', call => {
             call.answer(localStream);
             call.on('stream', stream => {
-                if(mode === 'monitor') displayStream(call.peer, stream);
+                if(myMode === 'monitor') addCard(call.peer, stream);
             });
         });
 
-        // 共通：データ通信処理
+        // 信号が届いたとき
         peer.on('connection', conn => {
             conn.on('data', data => {
-                if(mode === 'monitor' && data.type === 'JOIN') displayStream(data.id, null);
-                if(mode === 'monitor' && data.type === 'MOTION') alertMotion(data.id, data.time);
+                if(myMode === 'monitor' && data.type === 'JOIN') addCard(data.id, null);
+                if(myMode === 'monitor' && data.type === 'MOTION') alertMotion(data.id, data.time);
             });
-        });
-
-        peer.on('error', err => {
-            if(err.type === 'unavailable-id' && mode === 'monitor') {
-                alert("既に別の端末がモニターとして起動しています。");
-            }
         });
     }
 
-    // カメラ側：モニターに「私はここにいるよ」と送り続ける
-    function reportToMonitor() {
+    function report() {
         const conn = peer.connect(SYNC_ID);
         conn.on('open', () => conn.send({type: 'JOIN', id: peer.id}));
     }
 
-    // モニター側：カメラの枠を作る＆映像を呼ぶ
-    function displayStream(id, stream) {
-        if(!document.getElementById(`card-${id}`)) {
-            const grid = document.getElementById('main-grid');
-            const card = document.createElement('div');
+    function addCard(id, stream) {
+        let card = document.getElementById(`card-${id}`);
+        if(!card) {
+            card = document.createElement('div');
             card.className = 'card';
             card.id = `card-${id}`;
             card.innerHTML = `
-                <div class="v-wrap"><video id="v-${id}" autoplay playsinline></video></div>
-                <div class="controls">
-                    <strong>Unit: ${id}</strong>
-                    <button onclick="document.getElementById('v-${id}').muted=false">🔊 音を出す</button>
-                    <div class="log-box" id="log-${id}">接続済み</div>
+                <video id="v-${id}" autoplay playsinline></video>
+                <div style="padding:10px;">
+                    <strong>Unit: ${id}</strong><br>
+                    <button onclick="document.getElementById('v-${id}').muted=false" style="margin-top:5px;">🔊 音声を出す</button>
+                    <div id="log-${id}" style="font-size:11px; color:#aaa; margin-top:5px;">接続完了</div>
                 </div>
             `;
-            grid.appendChild(card);
-            // モニターからカメラへ映像をリクエスト
+            document.getElementById('grid').appendChild(card);
             peer.call(id, localStream);
         }
         if(stream) {
@@ -127,13 +124,14 @@
         }
     }
 
-    // 動体検知
-    function startMotionDetection() {
-        const video = document.getElementById('local-dummy');
+    function startMotion() {
+        const video = document.getElementById('preview');
         const canvas = document.getElementById('comp-canvas');
         const ctx = canvas.getContext('2d');
         let last;
         setInterval(() => {
+            if(video.videoWidth === 0) return;
+            canvas.width = 64; canvas.height = 48;
             ctx.drawImage(video, 0, 0, 64, 48);
             const curr = ctx.getImageData(0, 0, 64, 48).data;
             if(last) {
@@ -150,7 +148,7 @@
 
     function alertMotion(id, time) {
         const log = document.getElementById(`log-${id}`);
-        if(log) log.innerHTML = `<div>⚠️ ${time} 動き検知！</div>` + log.innerHTML;
+        if(log) log.innerHTML = `<div>⚠️ ${time} 動き検知</div>` + log.innerHTML;
     }
     </script>
 </body>
