@@ -3,239 +3,154 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lab Master - All in One</title>
+    <title>Lab Sync System</title>
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
-        :root { --primary: #007bff; --accent: #00d1b2; --bg: #f0f2f5; }
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: var(--bg); margin: 0; padding: 15px; }
+        body { font-family: sans-serif; background: #f0f2f5; margin: 0; padding: 15px; text-align: center; }
+        .setup-box { background: white; padding: 30px; border-radius: 15px; shadow: 0 4px 10px rgba(0,0,0,0.1); display: inline-block; margin-top: 50px; }
+        .btn { padding: 15px 30px; border: none; border-radius: 50px; font-weight: bold; cursor: pointer; color: white; margin: 10px; font-size: 16px; }
+        .btn-pc { background: #00d1b2; }
+        .btn-tab { background: #007bff; }
         
-        /* モード選択 */
-        .mode-select { display: flex; flex-direction: column; gap: 20px; align-items: center; justify-content: center; height: 80vh; }
-        .btn { padding: 20px 40px; border: none; border-radius: 50px; font-weight: bold; cursor: pointer; color: white; font-size: 18px; transition: 0.2s; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .btn:active { transform: scale(0.95); }
-        .btn-pc { background: var(--accent); }
-        .btn-tab { background: var(--primary); }
-
-        #monitor-ui, #camera-ui { display: none; }
-        
-        /* モニターカード */
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; }
-        .card { background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
+        #ui-area { display: none; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px; margin-top: 20px; }
+        .card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: left; }
         .v-wrap { background: #000; aspect-ratio: 16/9; position: relative; }
         video { width: 100%; height: 100%; object-fit: cover; }
-        
-        /* 操作用オーバーレイ */
-        .vol-badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.5); color: white; padding: 2px 8px; border-radius: 5px; font-size: 12px; }
-        
-        /* コントロールパネル */
-        .controls { padding: 15px; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid #eee; }
-        .btn-row { display: flex; gap: 8px; }
-        .ctrl-btn { flex: 1; padding: 10px; border: none; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: bold; background: #eee; }
-        .btn-rec { background: #ff4757; color: white; }
-        .btn-talk { background: #2f3542; color: white; }
-        
-        .log-box { height: 70px; overflow-y: auto; font-size: 11px; padding: 10px; background: #f9f9f9; color: #666; border-radius: 8px; }
-        .status { padding: 10px; background: #333; color: #fff; border-radius: 8px; margin-bottom: 15px; font-size: 14px; text-align: center; }
-        
+        .controls { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+        .log-box { height: 60px; overflow-y: auto; font-size: 11px; padding: 8px; background: #f9f9f9; border-radius: 5px; }
+        .status-bar { padding: 10px; background: #333; color: #fff; border-radius: 8px; font-size: 13px; }
         canvas { display: none; }
     </style>
 </head>
 <body>
 
-    <div id="mode-selection" class="mode-select">
-        <h2>役割を選択してください</h2>
-        <button class="btn btn-pc" onclick="initCameraMode()">📷 監視カメラ (PC側)</button>
-        <button class="btn btn-tab" onclick="initMonitorMode()">📱 集中管理モニター (タブレット側)</button>
+    <div id="setup-screen" class="setup-box">
+        <h2>システムを開始</h2>
+        <p>役割を選んでください</p>
+        <button class="btn btn-pc" onclick="start('camera')">📷 カメラとして使う</button>
+        <button class="btn btn-tab" onclick="start('monitor')">📱 モニターとして使う</button>
     </div>
 
-    <div id="camera-ui">
-        <div class="status" id="cam-status">カメラ準備中...</div>
-        <div class="v-wrap"><video id="my-video" autoplay playsinline muted></video></div>
+    <div id="ui-area">
+        <div class="status-bar" id="status">準備中...</div>
+        <div class="grid" id="main-grid"></div>
+        <video id="local-dummy" autoplay playsinline muted style="width:100px; display:none;"></video>
         <canvas id="comp-canvas"></canvas>
     </div>
 
-    <div id="monitor-ui">
-        <div class="status" id="mon-status">モニター待機中</div>
-        <div class="grid" id="monitor-grid"></div>
-    </div>
-
     <script>
-    const MASTER_ID = 'ryukon-lab-master-2026'; // 被らないユニークなID
-    let peer, localStream, activeCalls = {}, activeConns = {}, isRecording = {};
+    // ★重要：ここを自分だけの名前に変えてください（例：ryukon-lab-2026）
+    const SYNC_ID = 'ryukon-lab-master-system'; 
+    
+    let peer, localStream, mode;
+    let activeUnits = new Set();
 
-    async function getMedia(videoReq) {
+    async function start(selectedMode) {
+        mode = selectedMode;
+        document.getElementById('setup-screen').style.display = 'none';
+        document.getElementById('ui-area').style.display = 'block';
+        
+        // カメラ・マイクの起動
         try {
-            return await navigator.mediaDevices.getUserMedia({video: videoReq, audio: true});
+            localStream = await navigator.mediaDevices.getUserMedia({video: (mode==='camera'), audio: true});
+            if(mode === 'camera') document.getElementById('local-dummy').srcObject = localStream;
         } catch (e) {
-            alert("カメラ・マイクの権限を許可してください");
-            return new MediaStream();
+            console.log("メディア制限あり");
+            localStream = new MediaStream();
+        }
+
+        // モニターなら固定ID、カメラならランダムID
+        peer = (mode === 'monitor') ? new Peer(SYNC_ID) : new Peer();
+
+        peer.on('open', id => {
+            document.getElementById('status').innerText = `${mode}起動中: ${id}`;
+            if(mode === 'camera') {
+                // カメラ側：モニターを探して自分を登録
+                setInterval(reportToMonitor, 5000); 
+                startMotionDetection();
+            }
+        });
+
+        // 共通：着信処理
+        peer.on('call', call => {
+            call.answer(localStream);
+            call.on('stream', stream => {
+                if(mode === 'monitor') displayStream(call.peer, stream);
+            });
+        });
+
+        // 共通：データ通信処理
+        peer.on('connection', conn => {
+            conn.on('data', data => {
+                if(mode === 'monitor' && data.type === 'JOIN') displayStream(data.id, null);
+                if(mode === 'monitor' && data.type === 'MOTION') alertMotion(data.id, data.time);
+            });
+        });
+
+        peer.on('error', err => {
+            if(err.type === 'unavailable-id' && mode === 'monitor') {
+                alert("既に別の端末がモニターとして起動しています。");
+            }
+        });
+    }
+
+    // カメラ側：モニターに「私はここにいるよ」と送り続ける
+    function reportToMonitor() {
+        const conn = peer.connect(SYNC_ID);
+        conn.on('open', () => conn.send({type: 'JOIN', id: peer.id}));
+    }
+
+    // モニター側：カメラの枠を作る＆映像を呼ぶ
+    function displayStream(id, stream) {
+        if(!document.getElementById(`card-${id}`)) {
+            const grid = document.getElementById('main-grid');
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.id = `card-${id}`;
+            card.innerHTML = `
+                <div class="v-wrap"><video id="v-${id}" autoplay playsinline></video></div>
+                <div class="controls">
+                    <strong>Unit: ${id}</strong>
+                    <button onclick="document.getElementById('v-${id}').muted=false">🔊 音を出す</button>
+                    <div class="log-box" id="log-${id}">接続済み</div>
+                </div>
+            `;
+            grid.appendChild(card);
+            // モニターからカメラへ映像をリクエスト
+            peer.call(id, localStream);
+        }
+        if(stream) {
+            const v = document.getElementById(`v-${id}`);
+            v.srcObject = stream;
+            v.play();
         }
     }
 
-    // --- カメラ側 (PC) ---
-    async function initCameraMode() {
-        document.getElementById('mode-selection').style.display = 'none';
-        document.getElementById('camera-ui').style.display = 'block';
-        
-        const myName = "unit-" + Math.floor(Math.random() * 9000 + 1000);
-        localStream = await getMedia(true);
-        document.getElementById('my-video').srcObject = localStream;
-
-        peer = new Peer(myName);
-        peer.on('open', id => {
-            document.getElementById('cam-status').innerText = "【カメラ稼働中】 ID: " + id;
-            startMotionDetection();
-            connectToMaster();
-        });
-
-        // モニターからの着信に応答
-        peer.on('call', call => {
-            call.answer(localStream);
-            call.on('stream', rem => {
-                const a = document.createElement('audio'); a.srcObject = rem; a.autoplay = true; document.body.appendChild(a);
-            });
-        });
-
-        // モニターからの音声送信（TTS）を受信
-        peer.on('connection', conn => {
-            conn.on('data', data => {
-                if(data.type === 'TTS') {
-                    const ut = new SpeechSynthesisUtterance(data.text);
-                    ut.lang = 'ja-JP';
-                    window.speechSynthesis.speak(ut);
-                }
-            });
-        });
-    }
-
-    function connectToMaster() {
-        const conn = peer.connect(MASTER_ID);
-        conn.on('open', () => conn.send({ type: 'JOIN', id: peer.id }));
-        conn.on('close', () => setTimeout(connectToMaster, 5000));
-    }
-
+    // 動体検知
     function startMotionDetection() {
-        const video = document.getElementById('my-video');
+        const video = document.getElementById('local-dummy');
         const canvas = document.getElementById('comp-canvas');
-        const ctx = canvas.getContext('2d', {willReadFrequently: true});
+        const ctx = canvas.getContext('2d');
         let last;
         setInterval(() => {
-            canvas.width = 64; canvas.height = 48;
             ctx.drawImage(video, 0, 0, 64, 48);
             const curr = ctx.getImageData(0, 0, 64, 48).data;
-            if (last) {
-                let diff = 0;
-                for (let i=0; i<curr.length; i+=4) diff += Math.abs(curr[i]-last[i]);
-                if (diff > 250000) {
-                    const c = peer.connect(MASTER_ID);
-                    if(c.open) c.send({type:'MOTION', time: new Date().toLocaleTimeString()});
+            if(last) {
+                let d = 0;
+                for(let i=0; i<curr.length; i+=4) d += Math.abs(curr[i]-last[i]);
+                if(d > 300000) {
+                    const conn = peer.connect(SYNC_ID);
+                    if(conn.open) conn.send({type: 'MOTION', id: peer.id, time: new Date().toLocaleTimeString()});
                 }
             }
             last = curr;
         }, 1000);
     }
 
-    // --- モニター側 (タブレット) ---
-    async function initMonitorMode() {
-        document.getElementById('mode-selection').style.display = 'none';
-        document.getElementById('monitor-ui').style.display = 'block';
-        
-        localStream = await getMedia(false); // 自分のマイクのみ
-        localStream.getAudioTracks()[0].enabled = false; // 最初はオフ
-
-        peer = new Peer(MASTER_ID);
-        peer.on('open', id => document.getElementById('mon-status').innerText = "【モニター親機】 接続待ち...");
-
-        peer.on('connection', conn => {
-            conn.on('data', data => {
-                if (data.type === 'JOIN') addCard(data.id);
-                if (data.type === 'MOTION') updateLog(conn.peer, "⚠️ 動き検知: " + data.time, true);
-            });
-        });
-    }
-
-    function addCard(id) {
-        if (document.getElementById(`card-${id}`)) return;
-        const grid = document.getElementById('monitor-grid');
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.id = `card-${id}`;
-        card.innerHTML = `
-            <div class="v-wrap">
-                <video id="v-${id}" autoplay playsinline muted></video>
-                <div class="vol-badge" id="vol-${id}">消音中</div>
-            </div>
-            <div class="controls">
-                <div class="btn-row">
-                    <button class="ctrl-btn" onclick="toggleAudio('${id}', this)">🔊 音声を聴く</button>
-                    <button class="ctrl-btn btn-talk" id="talk-${id}" onclick="toggleTalk('${id}')">🎤 話しかける</button>
-                </div>
-                <div class="btn-row">
-                    <button class="ctrl-btn btn-rec" onclick="manualRec('${id}')">🔴 録画</button>
-                    <button class="ctrl-btn" onclick="askTTS('${id}')">💬 喋らせる</button>
-                </div>
-                <div class="log-box" id="log-${id}">Unit: ${id} 接続完了</div>
-            </div>
-        `;
-        grid.appendChild(card);
-        
-        const call = peer.call(id, localStream);
-        call.on('stream', s => {
-            document.getElementById(`v-${id}`).srcObject = s;
-            activeCalls[id] = s;
-        });
-        activeConns[id] = peer.connect(id);
-    }
-
-    function toggleAudio(id, btn) {
-        const v = document.getElementById(`v-${id}`);
-        v.muted = !v.muted;
-        btn.innerText = v.muted ? "🔊 音声を聴く" : "🔇 消音する";
-        document.getElementById(`vol-${id}`).innerText = v.muted ? "消音中" : "音声出力中";
-    }
-
-    function toggleTalk(id) {
-        const track = localStream.getAudioTracks()[0];
-        track.enabled = !track.enabled;
-        const btn = document.getElementById(`talk-${id}`);
-        btn.style.background = track.enabled ? "#ff4757" : "#2f3542";
-        btn.innerText = track.enabled ? "🎤 通話中..." : "🎤 話しかける";
-    }
-
-    function manualRec(id) {
-        if(activeCalls[id]) {
-            updateLog(id, "手動録画を開始しました", false);
-            startRec(id, activeCalls[id], 15000); // 15秒
-        }
-    }
-
-    function askTTS(id) {
-        const txt = prompt("PCに喋らせる言葉を入力してください:");
-        if(txt && activeConns[id]) activeConns[id].send({type:'TTS', text: txt});
-    }
-
-    function startRec(id, stream, duration) {
-        if (isRecording[id]) return;
-        isRecording[id] = true;
-        const mr = new MediaRecorder(stream);
-        const chunks = [];
-        mr.ondataavailable = e => chunks.push(e.data);
-        mr.onstop = () => {
-            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(chunks));
-            a.download = `lab_rec_${id}_${Date.now()}.webm`; a.click();
-            isRecording[id] = false;
-            updateLog(id, "録画を保存しました", false);
-        };
-        mr.start();
-        setTimeout(() => mr.stop(), duration);
-    }
-
-    function updateLog(id, msg, autoRecFlag) {
-        const l = document.getElementById(`log-${id}`);
-        if(l) {
-            l.innerHTML = `<div>${msg}</div>` + l.innerHTML;
-            if(autoRecFlag && activeCalls[id]) startRec(id, activeCalls[id], 10000);
-        }
+    function alertMotion(id, time) {
+        const log = document.getElementById(`log-${id}`);
+        if(log) log.innerHTML = `<div>⚠️ ${time} 動き検知！</div>` + log.innerHTML;
     }
     </script>
 </body>
