@@ -2,22 +2,22 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>PC Unit - Debug Mode</title>
+    <title>PC Unit - Stable</title>
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
         body { font-family: sans-serif; background: #121212; color: #e0e0e0; text-align: center; padding: 20px; }
-        #error-log { color: #ff6b6b; background: #2a1010; padding: 10px; border-radius: 5px; margin: 10px; display: none; }
-        .setup { background: #1e1e1e; padding: 20px; border-radius: 12px; border: 1px solid #333; display: inline-block; }
-        video { width: 100%; max-width: 400px; border-radius: 10px; margin-top: 20px; border: 1px solid #333; display:none; }
+        #log { color: #00d1b2; background: #000; padding: 10px; border-radius: 5px; margin: 10px; font-family: monospace; font-size: 14px; min-height: 20px; }
+        .setup { background: #1e1e1e; padding: 20px; border-radius: 12px; border: 1px solid #333; }
+        video { width: 100%; max-width: 400px; border-radius: 10px; margin-top: 20px; border: 1px solid #333; background: #000; }
     </style>
 </head>
 <body>
-    <h1>PC Camera Unit</h1>
-    <div id="error-log"></div>
+    <h1>PC Unit</h1>
+    <div id="log">準備完了</div>
 
     <div class="setup" id="setup-area">
         <input type="text" id="pc-id" value="pc-001" style="padding:10px;">
-        <button onclick="startUnit()" style="padding:10px 20px; background:#00d1b2; border:none; color:white; font-weight:bold; cursor:pointer;">監視ユニットとして起動</button>
+        <button onclick="startUnit()" style="padding:10px 20px; background:#00d1b2; border:none; color:white; font-weight:bold; cursor:pointer;">起動</button>
     </div>
 
     <div id="main-area" style="display:none;">
@@ -26,54 +26,58 @@
     </div>
 
     <script>
-    // エラーを表示する関数
-    function showError(msg) {
-        const errDiv = document.getElementById('error-log');
-        errDiv.style.display = 'block';
-        errDiv.innerText = "エラー発生: " + msg;
-    }
-
-    // PeerJSが読み込めているかチェック
-    window.onerror = function(msg) { showError(msg); };
-
     let peer, localStream;
+    const logDiv = document.getElementById('log');
+
+    function updateLog(msg) { logDiv.innerText = msg; }
 
     async function startUnit() {
+        const myId = document.getElementById('pc-id').value;
+        document.getElementById('setup-area').style.display = 'none';
+        document.getElementById('main-area').style.display = 'block';
+        updateLog("デバイスをチェック中...");
+
+        // 映像・音声の取得（失敗しても止まらないようにする）
         try {
-            const myId = document.getElementById('pc-id').value;
-            if (typeof Peer === 'undefined') {
-                showError("PeerJSライブラリが読み込めていません。ネット接続を確認してください。");
-                return;
-            }
-
-            document.getElementById('setup-area').style.display = 'none';
-            document.getElementById('main-area').style.display = 'block';
-            document.getElementById('name-display').innerText = "起動中: " + myId;
-
-            // カメラ・マイク取得
             localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
-            const video = document.getElementById('localVideo');
-            video.srcObject = localStream;
-            video.style.display = "inline-block";
-
-            peer = new Peer(myId);
-
-            peer.on('open', (id) => {
-                document.getElementById('name-display').innerText = "オンライン: " + id;
-            });
-
-            peer.on('error', (err) => showError("Peerエラー: " + err.type));
-
-            peer.on('call', call => {
-                call.answer(localStream);
-                call.on('stream', rem => {
-                    const a = document.createElement('audio'); a.srcObject = rem; a.autoplay = true; document.body.appendChild(a);
-                });
-            });
-
+            updateLog("カメラ・マイク OK");
         } catch (e) {
-            showError("起動失敗: " + e.message);
+            updateLog("カメラ/マイク制限ありで起動します");
+            try {
+                // マイクなし、映像のみ試行
+                localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
+            } catch (e2) {
+                // 全部ダメなら空のストリーム
+                localStream = new MediaStream();
+            }
         }
+
+        const video = document.getElementById('localVideo');
+        video.srcObject = localStream;
+
+        peer = new Peer(myId);
+
+        peer.on('open', (id) => {
+            updateLog("オンライン: " + id);
+            document.getElementById('name-display').innerText = id;
+        });
+
+        peer.on('error', (err) => updateLog("エラー: " + err.type));
+
+        peer.on('call', call => {
+            call.answer(localStream);
+            updateLog("タブレットと映像通話中");
+            call.on('stream', rem => {
+                const a = document.createElement('audio'); a.srcObject = rem; a.autoplay = true; document.body.appendChild(a);
+            });
+        });
+
+        // データ通信（読み上げ用）
+        peer.on('connection', conn => {
+            conn.on('data', data => {
+                if(typeof data === 'string') window.speechSynthesis.speak(new SpeechSynthesisUtterance(data));
+            });
+        });
     }
     </script>
 </body>
