@@ -3,204 +3,240 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neda Lab - Ultimate Sync</title>
+    <title>Neda Lab - Logic Synced All-in-One</title>
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
-        :root { --bg: #050505; --panel: #151515; --accent: #00d1b2; --text: #eee; }
-        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 10px; }
-        .setup-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 90vh; gap: 15px; }
-        .btn { padding: 18px 35px; border: none; border-radius: 50px; font-weight: bold; cursor: pointer; color: white; font-size: 16px; }
-        .btn-pc { background: var(--accent); }
-        .btn-tab { background: #007bff; }
+        /* 共通スタイル */
+        body { font-family: sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+        .mode-select { display: flex; flex-direction: column; gap: 20px; align-items: center; justify-content: center; height: 90vh; }
+        .btn-large { padding: 25px 50px; font-size: 20px; font-weight: bold; border-radius: 50px; border: none; cursor: pointer; color: white; transition: 0.2s; }
+        .pc-btn { background: #00d1b2; }
+        .mobile-btn { background: #007bff; }
         
-        #ui-area { display: none; padding-bottom: 80px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px; }
-        .card { background: var(--panel); border-radius: 12px; overflow: hidden; border: 1px solid #333; position: relative; }
-        .v-wrap { background: #000; aspect-ratio: 16/9; position: relative; cursor: pointer; }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        
-        /* 読み込み中・ロック解除ボタン */
-        .unlock-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10; cursor: pointer; }
-        .unlock-overlay::after { content: "▶ 映像と音を開始"; color: white; font-weight: bold; border: 2px solid white; padding: 10px; border-radius: 5px; }
+        /* PC用スタイル（提供コード準拠） */
+        #pc-ui, #mobile-ui { display: none; width: 100%; max-width: 1200px; }
+        .container { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; width: 100%; }
+        .video-box { flex: 2; min-width: 320px; max-width: 800px; position: relative; }
+        video { width: 100%; border-radius: 12px; background: #000; border: 2px solid #00d1b2; }
+        .log-box { flex: 1; min-width: 300px; height: 500px; background: #1e1e1e; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; border: 1px solid #333; }
+        .log-list { flex-grow: 1; overflow-y: auto; font-size: 14px; border-top: 1px solid #333; margin-top: 15px; padding-top: 10px; }
+        #status-bar { margin-bottom: 15px; font-size: 18px; display: flex; align-items: center; gap: 10px; }
+        #status { color: #00d1b2; font-weight: bold; }
+        #motion-dot { width: 14px; height: 14px; border-radius: 50%; background: #444; }
+        #motion-dot.active { background: #ff4d4d; box-shadow: 0 0 15px #ff4d4d; }
+        button { background: #444; color: #ccc; border: none; padding: 10px; border-radius: 5px; cursor: pointer; }
 
-        details { border-top: 1px solid #333; background: #222; }
-        summary { padding: 12px; cursor: pointer; color: var(--accent); font-weight: bold; list-style: none; }
-        .controls { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-        .ctrl-btn { padding: 10px; border: none; border-radius: 6px; background: #444; color: #fff; cursor: pointer; font-size: 12px; }
-        
-        .log-box { height: 80px; overflow-y: auto; font-size: 11px; padding: 8px; background: #000; color: #00ff00; font-family: monospace; border-top: 1px solid #222; }
-        #preview { width: 160px; position: fixed; bottom: 10px; right: 10px; border: 2px solid var(--accent); border-radius: 8px; display: none; z-index: 100; }
-        canvas { display: none; }
+        /* Mobile用スタイル（提供コード準拠） */
+        #conn-status { width: 100%; padding: 10px 0; margin-bottom: 10px; border-radius: 8px; font-weight: bold; background: #dc3545; color: white; text-align: center; }
+        #conn-status.online { background: #28a745; }
+        .mobile-v-container { width: 100%; background: #000; border-radius: 10px; aspect-ratio: 16/9; overflow: hidden; position: relative; border: 2px solid #333; }
+        #mobileLog { background: #222; color: #00d1b2; font-family: monospace; font-size: 12px; height: 100px; overflow-y: auto; margin: 10px 0; padding: 10px; border-radius: 8px; text-align: left; }
+        .btn-main { background: #007bff; color: white; width: 100%; padding: 15px; margin: 5px 0; }
+        .btn-mic { background: #6c757d; color: white; width: 100%; padding: 15px; margin: 5px 0; }
+        .btn-mic.active { background: #dc3545; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; background: #333; color: white; }
     </style>
 </head>
 <body>
 
-    <div id="setup-screen" class="setup-screen">
-        <h1>Neda Lab System</h1>
-        <button class="btn btn-pc" onclick="start('camera')">📷 カメラとして起動</button>
-        <button class="btn btn-tab" onclick="start('monitor')">📱 モニターとして起動</button>
+    <div id="mode-select" class="mode-select">
+        <h1>Neda Lab Master</h1>
+        <button class="btn-large pc-btn" onclick="initPC()">💻 PC (親機) として起動</button>
+        <button class="btn-large mobile-btn" onclick="initMobile()">📱 スマホ (子機) として起動</button>
     </div>
 
-    <div id="ui-area">
-        <div id="stat" style="font-size:11px; color:#555; margin-bottom:10px;"></div>
-        <div class="grid" id="grid"></div>
-        <video id="preview" autoplay playsinline muted></video>
+    <div id="pc-ui">
+        <div id="status-bar"><div id="motion-dot"></div><span>状態: <span id="status">起動中...</span></span></div>
+        <div class="container">
+            <div class="video-box"><video id="localVideo" autoplay playsinline muted></video><canvas id="motionCanvas" style="display:none;"></canvas></div>
+            <div class="log-box">
+                <strong>動体検知ログ</strong>
+                <div id="logList" class="log-list"></div>
+                <button onclick="document.getElementById('logList').innerHTML=''">ログ削除</button>
+            </div>
+        </div>
     </div>
 
-    <canvas id="comp-canvas"></canvas>
+    <div id="mobile-ui">
+        <div id="conn-status">未接続</div>
+        <div class="mobile-v-container"><video id="remoteVideo" autoplay playsinline muted></video></div>
+        <div id="mobileLog">通知待機中...</div>
+        <button id="recSettingBtn" style="background:#444;" onclick="toggleRecSetting()">自動録画: OFF</button>
+        <button id="micBtn" class="btn-mic" onclick="toggleMic()">1. マイク準備 (信号開始)</button>
+        <button class="btn-main" onclick="startConnection()">2. PCに接続開始</button>
+        <input type="text" id="tts-text" placeholder="読み上げ文字">
+        <button onclick="sendText()" style="background: #28a745; width:100%; color:white; padding:15px; border-radius:8px;">送信</button>
+    </div>
+
+    <div id="audio-container"></div>
 
     <script>
-    const MASTER_ID = 'ryukon-lab-sync-2026';
-    let peer, localStream, myMode, isRecording = {};
+    const MASTER_ID = 'pc-monitor-001';
+    let peer, localStream, connections = [];
 
-    async function start(mode) {
-        myMode = mode;
-        try {
-            // マイクとカメラを両方取得
-            localStream = await navigator.mediaDevices.getUserMedia({video: (mode==='camera'), audio: true});
-            document.getElementById('setup-screen').style.display = 'none';
-            document.getElementById('ui-area').style.display = 'block';
+    // --- PC (Base Station) ロジック ---
+    function initPC() {
+        document.getElementById('mode-select').style.display = 'none';
+        document.getElementById('pc-ui').style.display = 'block';
+        
+        peer = new Peer(MASTER_ID);
+        const video = document.getElementById('localVideo');
+        const logList = document.getElementById('logList');
+        const motionDot = document.getElementById('motion-dot');
+        const canvas = document.getElementById('motionCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        let prevFrame = null, lastDetectedTime = 0;
 
-            if(mode === 'camera') {
-                const pre = document.getElementById('preview');
-                pre.style.display = "block"; pre.srcObject = localStream;
-            }
+        peer.on("open", id => { document.getElementById('status').innerText = "接続待機中..."; });
 
-            peer = (mode === 'monitor') ? new Peer(MASTER_ID) : new Peer();
-
-            peer.on('open', id => {
-                document.getElementById('stat').innerText = `ID: ${id} | Mode: ${mode}`;
-                if(mode === 'camera') {
-                    setInterval(() => {
-                        const conn = peer.connect(MASTER_ID);
-                        conn.on('open', () => conn.send({type: 'JOIN', id: peer.id}));
-                    }, 5000);
-                    startMotionDetection();
-                }
-            });
-
-            // 映像・音声の着信
-            peer.on('call', call => {
-                call.answer(localStream); // 自分のマイク音声を相手に返す（双方向）
-                call.on('stream', stream => { if(myMode === 'monitor') addCard(call.peer, stream); });
-            });
-
-            // データ着信（JOIN通知、動体検知、読み上げ）
-            peer.on('connection', conn => {
-                conn.on('data', data => {
-                    if(myMode === 'monitor') {
-                        if(data.type === 'JOIN') addCard(data.id, null);
-                        if(data.type === 'MOTION') handleMotion(data.id, data.time);
+        navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: { echoCancellation: true, autoGainControl: true, noiseSuppression: true }
+        }).then(stream => {
+            localStream = stream;
+            video.srcObject = stream;
+            setInterval(() => {
+                if (!video.videoWidth) return;
+                canvas.width = 64; canvas.height = 48;
+                ctx.drawImage(video, 0, 0, 64, 48);
+                const currFrame = ctx.getImageData(0, 0, 64, 48);
+                let diff = 0;
+                if (prevFrame) {
+                    for (let i = 0; i < currFrame.data.length; i += 4) {
+                        diff += Math.abs(currFrame.data[i] - prevFrame.data[i]);
                     }
-                    if(data.type === 'TTS') speakText(data.text);
+                }
+                prevFrame = currFrame;
+                if (diff > 30000) {
+                    const now = new Date();
+                    if (now.getTime() - lastDetectedTime > 5000) {
+                        const timeStr = now.toLocaleTimeString('ja-JP');
+                        const item = document.createElement('div');
+                        item.style.color = "#00d1b2";
+                        item.innerText = `● ${timeStr} 動きを検知`;
+                        logList.insertBefore(item, logList.firstChild);
+                        connections.forEach(conn => {
+                            if (conn.open) conn.send({ type: 'LOG', data: timeStr + " 動き検知" });
+                        });
+                        lastDetectedTime = now.getTime();
+                    }
+                    motionDot.classList.add('active');
+                    setTimeout(() => motionDot.classList.remove('active'), 500);
+                }
+            }, 500);
+
+            peer.on('call', call => {
+                call.answer(null); 
+                call.on('stream', remoteStream => {
+                    const oldAudio = document.getElementById('remoteAudio-' + call.peer);
+                    if (oldAudio) oldAudio.remove();
+                    const audio = document.createElement('audio');
+                    audio.id = 'remoteAudio-' + call.peer;
+                    audio.srcObject = remoteStream;
+                    audio.autoplay = true;
+                    document.getElementById('audio-container').appendChild(audio);
                 });
             });
 
-        } catch (e) { alert("デバイスエラー: " + e.message); }
+            peer.on('connection', conn => {
+                conn.on("open", () => {
+                    connections.push(conn);
+                    document.getElementById('status').innerText = `スマホ接続中 (${connections.length}台)`;
+                    peer.call(conn.peer, localStream);
+                });
+                conn.on('data', data => {
+                    if (typeof data === 'string') {
+                        const uttr = new SpeechSynthesisUtterance(data);
+                        uttr.lang = 'ja-JP';
+                        window.speechSynthesis.speak(uttr);
+                    }
+                });
+            });
+        });
     }
 
-    function addCard(id, stream) {
-        let card = document.getElementById(`card-${id}`);
-        if(!card) {
-            card = document.createElement('div');
-            card.className = 'card'; card.id = `card-${id}`;
-            card.innerHTML = `
-                <div class="v-wrap" id="unlock-${id}" onclick="unlock('${id}')">
-                    <video id="v-${id}" autoplay playsinline muted></video>
-                    <div class="unlock-overlay" id="overlay-${id}"></div>
-                </div>
-                <div class="log-box" id="log-${id}">Unit: ${id} Connected.</div>
-                <details>
-                    <summary>LAB MENU</summary>
-                    <div class="controls">
-                        <button class="ctrl-btn" onclick="unlock('${id}')">🔊 音声・映像を同期</button>
-                        <button class="ctrl-btn" onclick="sendTTS('${id}')">💬 このカメラに読み上げ送信</button>
-                        <button class="ctrl-btn" onclick="manualRec('${id}')">🔴 手動録画 (15s)</button>
-                    </div>
-                </details>
-            `;
-            document.getElementById('grid').appendChild(card);
-            peer.call(id, localStream);
+    // --- Mobile (Control) ロジック ---
+    let conn = null, isMicOn = false, autoRecord = false, isRecording = false;
+
+    function initMobile() {
+        document.getElementById('mode-select').style.display = 'none';
+        document.getElementById('mobile-ui').style.display = 'block';
+        peer = new Peer();
+    }
+
+    function toggleRecSetting() {
+        autoRecord = !autoRecord;
+        const btn = document.getElementById('recSettingBtn');
+        btn.innerText = autoRecord ? "自動録画: ON (1分間)" : "自動録画: OFF";
+        btn.style.background = autoRecord ? "#28a745" : "#444";
+    }
+
+    async function toggleMic() {
+        if (!localStream) {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: { echoCancellation: true, autoGainControl: true, noiseSuppression: true } 
+                });
+            } catch (e) { alert("マイク許可失敗"); return; }
         }
-        if(stream) {
-            const v = document.getElementById(`v-${id}`);
-            v.srcObject = stream;
-        }
+        isMicOn = !isMicOn;
+        localStream.getAudioTracks()[0].enabled = isMicOn;
+        if (isMicOn) peer.call(MASTER_ID, localStream);
+        const btn = document.getElementById('micBtn');
+        btn.innerText = isMicOn ? "1. マイク信号: 送信中" : "1. マイク準備: OFF";
+        btn.classList.toggle('active', isMicOn);
     }
 
-    // 「真っ暗」対策：ユーザーがクリックして再生を開始させる
-    function unlock(id) {
-        const v = document.getElementById(`v-${id}`);
-        const overlay = document.getElementById(`overlay-${id}`);
-        if(v) {
-            v.muted = false;
-            v.play();
-            if(overlay) overlay.style.display = 'none';
-        }
-    }
-
-    // 読み上げ送信
-    function sendTTS(id) {
-        const text = prompt("カメラ側で読み上げる文字を入力:");
-        if(!text) return;
-        const conn = peer.connect(id);
-        conn.on('open', () => conn.send({type: 'TTS', text: text}));
-    }
-
-    // 読み上げ実行（ブラウザの機能を使用）
-    function speakText(text) {
-        const ut = new SpeechSynthesisUtterance(text);
-        ut.lang = 'ja-JP';
-        window.speechSynthesis.speak(ut);
-    }
-
-    // 動体検知
-    function startMotionDetection() {
-        const video = document.getElementById('preview');
-        const canvas = document.getElementById('comp-canvas');
-        const ctx = canvas.getContext('2d');
-        let last;
-        setInterval(() => {
-            if(video.videoWidth === 0) return;
-            canvas.width = 64; canvas.height = 48;
-            ctx.drawImage(video, 0, 0, 64, 48);
-            const curr = ctx.getImageData(0, 0, 64, 48).data;
-            if(last) {
-                let d = 0; for(let i=0; i<curr.length; i+=4) d += Math.abs(curr[i]-last[i]);
-                if(d > 350000) {
-                    const conn = peer.connect(MASTER_ID);
-                    conn.on('open', () => conn.send({type: 'MOTION', id: peer.id, time: new Date().toLocaleTimeString()}));
-                }
+    function startConnection() {
+        conn = peer.connect(MASTER_ID);
+        conn.on('data', data => {
+            if (data.type === 'LOG') {
+                const logEl = document.getElementById('mobileLog');
+                logEl.innerHTML = `<div>● ${data.data}</div>` + logEl.innerHTML;
+                if (autoRecord && window.remoteStream) startRecording(window.remoteStream);
             }
-            last = curr;
-        }, 1000);
+        });
+        peer.on('call', call => {
+            call.answer(null); 
+            call.on('stream', stream => {
+                if (stream.getVideoTracks().length > 0) {
+                    const v = document.getElementById('remoteVideo');
+                    v.srcObject = stream;
+                    window.remoteStream = stream;
+                    document.getElementById('conn-status').innerText = "接続中";
+                    document.getElementById('conn-status').className = "online";
+                } 
+                const audio = document.createElement('audio');
+                audio.srcObject = stream;
+                audio.autoplay = true;
+                document.getElementById('audio-container').appendChild(audio);
+            });
+        });
     }
 
-    function handleMotion(id, time) {
-        const log = document.getElementById(`log-${id}`);
-        if(log) {
-            log.innerHTML = `<div>⚠️ ${time} 動きを検知・自動保存</div>` + log.innerHTML;
-            const v = document.getElementById(`v-${id}`);
-            if(v && v.srcObject) record(id, v.srcObject, 10000);
-        }
-    }
-
-    function record(id, stream, ms) {
-        if(isRecording[id]) return; isRecording[id] = true;
-        const mr = new MediaRecorder(stream); const chunks = [];
+    function startRecording(stream) {
+        if (isRecording) return; isRecording = true;
+        let chunks = [];
+        const mr = new MediaRecorder(stream, { mimeType: 'video/webm' });
         mr.ondataavailable = e => chunks.push(e.data);
         mr.onstop = () => {
-            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(chunks));
-            a.download = `LabRec_${id}_${Date.now()}.webm`; a.click();
-            isRecording[id] = false;
+            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(chunks)); 
+            a.download = `rec_${Date.now()}.webm`; a.click();
+            isRecording = false;
         };
-        mr.start(); setTimeout(() => { if(mr.state==="recording") mr.stop(); }, ms);
+        mr.start(); setTimeout(() => { if(mr.state !== "inactive") mr.stop(); }, 60000);
     }
 
-    function manualRec(id) {
-        const v = document.getElementById(`v-${id}`);
-        if(v && v.srcObject) record(id, v.srcObject, 15000);
+    function sendText() {
+        const txt = document.getElementById('tts-text').value;
+        if (conn && conn.open) { conn.send(txt); document.getElementById('tts-text').value = ""; }
     }
+
+    // クリックで音声をアンブロック
+    document.addEventListener('click', () => {
+        const audios = document.querySelectorAll('audio');
+        audios.forEach(a => a.play().catch(()=>{}));
+    });
     </script>
 </body>
 </html>
