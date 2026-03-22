@@ -3,233 +3,207 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NextGen Surveillance - Clean Edition</title>
+    <title>Surveillance System - Multi Camera</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root {
-            --bg-color: #f8f9fa;
-            --panel-bg: #ffffff;
-            --main-color: #00d1b2; /* 清楚なターコイズ */
-            --text-dark: #2d3436;
+            --bg: #f0f2f5;
+            --panel: #ffffff;
+            --primary: #00d1b2;
+            --text: #2d3436;
             --accent-red: #ff7675;
-            --border-color: #dfe6e9;
+            --border: #e1e4e8;
         }
 
         body {
-            background-color: var(--bg-color);
-            color: var(--text-dark);
-            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Roboto, sans-serif;
             margin: 0;
-            height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
+            height: 100vh;
+            overflow: hidden;
         }
 
-        /* 初期選択画面 */
+        /* 初期設定画面 */
         #setup-screen {
-            text-align: center;
-            background: var(--panel-bg);
+            background: var(--panel);
             padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
-            max-width: 500px;
-            width: 90%;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.05);
+            text-align: center;
+            width: 350px;
+            transition: 0.5s;
         }
 
-        .choice-btn {
-            display: block;
+        .input-group { margin-bottom: 20px; text-align: left; }
+        .input-group label { display: block; font-size: 0.8rem; margin-bottom: 5px; color: #636e72; }
+        input[type="text"] {
             width: 100%;
-            padding: 20px;
-            margin: 15px 0;
-            font-size: 1.2rem;
-            font-weight: bold;
-            border: 2px solid var(--main-color);
-            background: transparent;
-            color: var(--main-color);
+            padding: 12px;
+            border: 1px solid var(--border);
             border-radius: 8px;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border-radius: 8px;
+            border: none;
+            font-weight: bold;
             cursor: pointer;
             transition: 0.3s;
+            margin-top: 10px;
         }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); }
+        .btn:hover { opacity: 0.8; transform: translateY(-2px); }
 
-        .choice-btn:hover {
-            background: var(--main-color);
-            color: white;
-        }
-
-        /* メインUI（初期は非表示） */
-        #main-app {
-            display: none;
-            width: 100vw;
-            height: 100vh;
-            flex-direction: column;
-        }
+        /* メインUI */
+        #main-app { display: none; width: 100vw; height: 100vh; flex-direction: column; }
 
         header {
-            background: white;
-            padding: 10px 25px;
-            border-bottom: 1px solid var(--border-color);
+            background: #fff;
+            padding: 15px 30px;
+            border-bottom: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .container {
-            display: flex;
-            flex: 1;
-            overflow: hidden;
-        }
+        .layout { display: flex; flex: 1; overflow: hidden; }
 
         /* 映像エリア */
-        #view-area {
-            flex: 3;
-            display: flex;
-            flex-direction: column;
-            padding: 20px;
-            background: #fff;
-        }
-
-        #main-stage {
+        .viewport { flex: 1; display: flex; flex-direction: column; padding: 20px; gap: 20px; }
+        .main-screen {
             flex: 1;
             background: #000;
-            border-radius: 12px;
-            overflow: hidden;
+            border-radius: 15px;
             position: relative;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-
         #main-video { width: 100%; height: 100%; object-fit: contain; }
 
-        #thumb-rail {
-            height: 100px;
-            margin-top: 15px;
+        /* サムネイルリスト */
+        .thumb-list {
+            height: 120px;
             display: flex;
-            gap: 12px;
+            gap: 15px;
             overflow-x: auto;
+            padding: 5px;
         }
-
-        .thumb-item {
-            min-width: 140px;
-            height: 80px;
-            background: #eee;
-            border-radius: 6px;
-            cursor: pointer;
-            border: 2px solid transparent;
+        .thumb-card {
+            min-width: 160px;
+            background: #fff;
+            border-radius: 10px;
             overflow: hidden;
+            border: 2px solid transparent;
+            cursor: pointer;
+            position: relative;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         }
-        .thumb-item.active { border-color: var(--main-color); }
-        .thumb-item video { width: 100%; height: 100%; object-fit: cover; }
+        .thumb-card.active { border-color: var(--primary); }
+        .thumb-card video { width: 100%; height: 75px; object-fit: cover; background: #000; }
+        .thumb-name { font-size: 0.75rem; text-align: center; padding: 5px; font-weight: bold; }
 
         /* サイドバー */
         aside {
-            flex: 1;
-            min-width: 320px;
+            width: 320px;
             background: #fff;
-            border-left: 1px solid var(--border-color);
+            border-left: 1px solid var(--border);
             display: flex;
             flex-direction: column;
             padding: 20px;
         }
 
-        .status-card {
+        .status-box {
             padding: 15px;
-            border-radius: 8px;
+            background: var(--bg);
+            border-radius: 10px;
             margin-bottom: 20px;
-            background: var(--bg-color);
-            border: 1px solid var(--border-color);
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             display: flex;
             align-items: center;
             gap: 10px;
         }
+        .indicator { width: 8px; height: 8px; border-radius: 50%; background: #bdc3c7; }
+        .indicator.on { background: var(--primary); box-shadow: 0 0 8px var(--primary); }
+        .indicator.alert { background: var(--accent-red); animation: blink 0.8s infinite; }
 
-        .dot { height: 10px; width: 10px; border-radius: 50%; background: #ccc; }
-        .dot.active { background: var(--main-color); box-shadow: 0 0 8px var(--main-color); }
-        .dot.rec { background: var(--accent-red); animation: blink 1s infinite; }
-
-        @keyframes blink { 50% { opacity: 0; } }
-
-        #log-window {
+        #log-box {
             flex: 1;
-            background: var(--bg-color);
+            font-size: 0.8rem;
+            background: #fafafa;
+            border: 1px solid var(--border);
             border-radius: 8px;
             padding: 10px;
-            font-size: 0.85rem;
             overflow-y: auto;
-            border: 1px solid var(--border-color);
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
 
-        .tts-box {
-            display: flex;
-            gap: 5px;
-        }
-
-        input[type="text"] {
-            flex: 1;
-            padding: 12px;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            outline: none;
-        }
-
-        .send-btn {
-            background: var(--main-color);
-            color: white;
-            border: none;
-            padding: 0 15px;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-
-        /* 非表示クラス */
+        @keyframes blink { 50% { opacity: 0.3; } }
         .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
 <div id="setup-screen">
-    <h2 style="color: var(--text-dark); margin-bottom: 30px;">Surveillance System</h2>
-    <p style="color: #636e72; font-size: 0.9rem; margin-bottom: 20px;">デバイスの役割を選択してください</p>
-    <button class="choice-btn" onclick="startApp('master')">モニター（親機）として開始</button>
-    <button class="choice-btn" onclick="startApp('camera')">カメラ（子機）として開始</button>
+    <h2 style="margin-bottom: 30px;">Surveillance</h2>
+    
+    <div id="setup-master">
+        <button class="btn btn-primary" onclick="launch('master')">モニター（親機）を起動</button>
+    </div>
+    
+    <div style="margin: 20px 0; color: #ccc;">OR</div>
+
+    <div id="setup-camera">
+        <div class="input-group">
+            <label>カメラ名（例：玄関、赤ちゃん部屋）</label>
+            <input type="text" id="cam-name-input" placeholder="名前を入力...">
+        </div>
+        <button class="btn btn-outline" onclick="launch('camera')">カメラとして接続</button>
+    </div>
 </div>
 
 <div id="main-app">
     <header>
-        <div style="font-weight: bold; letter-spacing: 1px;">NEXTGEN <span id="role-label" style="color: var(--main-color);"></span></div>
-        <div id="peer-id-tag" style="font-size: 0.8rem; color: #b2bec3;">Connecting...</div>
+        <div style="font-weight: 800; color: var(--primary); font-size: 1.2rem;">NEXTGEN SYSTEM</div>
+        <div id="device-info" style="font-size: 0.8rem; color: #95a5a6;"></div>
     </header>
 
-    <div class="container">
-        <section id="view-area">
-            <div id="main-stage">
+    <div class="layout">
+        <main class="viewport">
+            <div class="main-screen">
                 <video id="main-video" autoplay playsinline muted></video>
-                <div id="rec-ui" style="position:absolute; top:20px; left:20px; color:white; background:rgba(255,0,0,0.7); padding:5px 12px; border-radius:20px; font-size:0.8rem; display:none;">REC 録画中</div>
+                <div id="rec-tag" style="position:absolute; top:20px; left:20px; background:rgba(255,0,0,0.8); color:white; padding:5px 15px; border-radius:20px; font-size:0.7rem; display:none;">LIVE RECORDING</div>
             </div>
-            <div id="thumb-rail"></div>
-        </section>
+            <div id="thumb-list" class="thumb-list"></div>
+        </main>
 
         <aside>
-            <div class="status-card">
-                <div id="status-dot" class="dot"></div>
-                <span id="status-text">システム待機中</span>
+            <div class="status-box">
+                <div id="ind" class="indicator"></div>
+                <span id="stat-text">Ready</span>
             </div>
 
-            <div id="master-tools" class="hidden">
-                <div style="font-size: 0.9rem; margin-bottom: 8px; color: #636e72;">TTS（音声送信）:</div>
-                <div class="tts-box">
-                    <input type="text" id="tts-input" placeholder="メッセージを入力...">
-                    <button class="send-btn" onclick="broadcastTTS()">送信</button>
+            <div id="master-ctrl" class="hidden">
+                <div style="font-size: 0.8rem; margin-bottom: 8px;">一斉TTS送信:</div>
+                <div style="display: flex; gap: 5px;">
+                    <input type="text" id="tts-msg" placeholder="喋らせる内容...">
+                    <button class="btn btn-primary" style="margin:0; width:60px; padding:0;" onclick="broadcast()">送る</button>
                 </div>
             </div>
 
-            <div id="camera-tools" class="hidden">
-                <p style="font-size: 0.85rem; color: #636e72;">動体検知・自動録画が有効です。<br>検知すると親機へ通知し、保存します。</p>
-            </div>
-
-            <div style="font-size: 0.9rem; margin: 20px 0 8px; color: #636e72;">アクティビティログ:</div>
-            <div id="log-window"></div>
+            <div style="font-size: 0.8rem; margin: 20px 0 5px; color: #95a5a6;">ログ履歴:</div>
+            <div id="log-box"></div>
         </aside>
     </div>
 </div>
@@ -238,164 +212,154 @@
 
 <script>
     const MASTER_ID = 'monitor-master-unit';
-    let peer = null;
-    let myRole = '';
+    let peer, myRole, myName;
     let connections = {};
-    let isRecording = false;
 
-    const logWindow = document.getElementById('log-window');
-    const statusText = document.getElementById('status-text');
-    const statusDot = document.getElementById('status-dot');
-
-    function addLog(msg) {
-        const time = new Date().toLocaleTimeString();
-        logWindow.innerHTML = `<div style="margin-bottom:5px;"><span style="color:#b2bec3;">${time}</span> ${msg}</div>` + logWindow.innerHTML;
+    function addLog(m) {
+        const d = document.getElementById('log-box');
+        d.innerHTML = `<div style="margin-bottom:4px; border-bottom:1px solid #eee; padding-bottom:2px;">${m}</div>` + d.innerHTML;
     }
 
-    async function startApp(role) {
+    async function launch(role) {
         myRole = role;
+        if (role === 'camera') {
+            myName = document.getElementById('cam-name-input').value || '不明なカメラ';
+        } else {
+            myName = 'メインモニター';
+        }
+
         document.getElementById('setup-screen').style.display = 'none';
         document.getElementById('main-app').style.display = 'flex';
-        document.getElementById('role-label').textContent = role === 'master' ? 'MONITOR' : 'CAMERA';
-        
-        if (role === 'master') {
-            document.getElementById('master-tools').classList.remove('hidden');
-            initPeer(MASTER_ID);
-        } else {
-            document.getElementById('camera-tools').classList.remove('hidden');
-            initPeer('cam-' + Math.random().toString(36).substr(2, 5));
-        }
+        document.getElementById('device-info').textContent = `${myName} | ID: 待機中...`;
+
+        initPeer();
     }
 
-    function initPeer(id) {
+    function initPeer() {
+        const id = (myRole === 'master') ? MASTER_ID : 'cam-' + Math.random().toString(36).substr(2, 6);
         peer = new Peer(id);
 
-        peer.on('open', (openedId) => {
-            document.getElementById('peer-id-tag').textContent = `ID: ${openedId}`;
-            addLog(`システムがオンラインになりました (${openedId})`);
-            statusDot.classList.add('active');
-            statusText.textContent = "待機中・オンライン";
-            
-            if (myRole === 'camera') startCameraEngine();
+        peer.on('open', (id) => {
+            document.getElementById('device-info').textContent = `${myName} | ID: ${id}`;
+            document.getElementById('ind').classList.add('on');
+            document.getElementById('stat-text').textContent = "オンライン";
+            if (myRole === 'camera') startCamera();
+            if (myRole === 'master') document.getElementById('master-ctrl').classList.remove('hidden');
         });
 
-        // 親機側：カメラからの着信処理
         peer.on('call', (call) => {
             call.answer();
             call.on('stream', (stream) => {
-                createThumbnail(call.peer, stream);
+                // カメラ名を取得するためにメタデータを待つか、接続時のデータ送受信を利用
+                addThumb(call.peer, stream);
             });
         });
 
         peer.on('connection', (conn) => {
             connections[conn.peer] = conn;
-            conn.on('data', (data) => handleData(data, conn.peer));
+            conn.on('data', (data) => {
+                if (data.type === 'init') {
+                    const thumb = document.getElementById(`name-${conn.peer}`);
+                    if (thumb) thumb.textContent = data.name;
+                    addLog(`[接続] ${data.name} がオンラインになりました`);
+                }
+                if (data.type === 'alert') {
+                    document.getElementById('ind').classList.add('alert');
+                    document.getElementById('stat-text').textContent = `検知: ${data.name}`;
+                    addLog(`⚠ ${data.name} で動きを検知、録画を開始しました`);
+                }
+                if (data.type === 'idle') {
+                    document.getElementById('ind').classList.remove('alert');
+                    document.getElementById('stat-text').textContent = "監視中";
+                }
+                if (data.type === 'tts') {
+                    const u = new SpeechSynthesisUtterance(data.text);
+                    u.lang = 'ja-JP';
+                    window.speechSynthesis.speak(u);
+                }
+            });
         });
     }
 
-    // --- カメラ（子機）エンジンの起動 ---
-    async function startCameraEngine() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            const v = document.getElementById('main-video');
-            v.srcObject = stream;
-
-            const call = peer.call(MASTER_ID, stream);
-            const conn = peer.connect(MASTER_ID);
-
-            // 動体検知ロジック
-            const canvas = document.getElementById('motion-canvas');
-            const ctx = canvas.getContext('2d');
-            let prevData = null;
-
-            setInterval(() => {
-                ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-                const currData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-                if (prevData) {
-                    let diff = 0;
-                    for (let i = 0; i < currData.length; i += 4) {
-                        diff += Math.abs(currData[i] - prevData[i]);
-                    }
-                    if (diff > 30000 && !isRecording) startSmartRecord(stream, conn);
-                }
-                prevData = currData;
-            }, 600);
-
-            addLog("親機に接続し、監視を開始しました");
-        } catch (e) {
-            addLog("エラー: カメラへのアクセスが拒否されました");
-        }
-    }
-
-    function startSmartRecord(stream, conn) {
-        isRecording = true;
-        addLog("⚠ 動体を検知：自動録画を開始");
-        conn.send({ type: 'status', msg: 'DETECTED' });
+    // --- カメラ側 ---
+    async function startCamera() {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById('main-video').srcObject = stream;
         
-        const chunks = [];
-        const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-        recorder.ondataavailable = e => chunks.push(e.data);
-        recorder.onstop = () => {
-            const blob = new Blob(chunks, { type: 'video/webm' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `alert_${new Date().getTime()}.webm`;
-            a.click();
-            isRecording = false;
-            conn.send({ type: 'status', msg: 'IDLE' });
-        };
-        recorder.start();
-        setTimeout(() => recorder.stop(), 10000);
-    }
+        const call = peer.call(MASTER_ID, stream);
+        const conn = peer.connect(MASTER_ID);
+        
+        conn.on('open', () => {
+            conn.send({ type: 'init', name: myName });
+        });
 
-    // --- モニター（親機）エンジンの起動 ---
-    function createThumbnail(id, stream) {
-        if (document.getElementById(`t-${id}`)) return;
-        const rail = document.getElementById('thumb-rail');
-        const div = document.createElement('div');
-        div.id = `t-${id}`;
-        div.className = 'thumb-item';
-        div.innerHTML = `<video autoplay playsinline muted></video>`;
-        const v = div.querySelector('video');
-        v.srcObject = stream;
+        // 動体検知
+        const canvas = document.getElementById('motion-canvas');
+        const ctx = canvas.getContext('2d');
+        let prev = null;
+        let recording = false;
 
-        div.onclick = () => {
-            document.querySelectorAll('.thumb-item').forEach(el => el.classList.remove('active'));
-            div.classList.add('active');
-            document.getElementById('main-video').srcObject = stream;
-            statusText.textContent = `監視中: ${id}`;
-        };
-        rail.appendChild(div);
-        if (rail.children.length === 1) div.click();
-    }
-
-    function handleData(data, from) {
-        if (data.type === 'status') {
-            if (data.msg === 'DETECTED') {
-                statusDot.classList.add('rec');
-                statusText.textContent = `警報: ${from} で動体検知！`;
-                addLog(`[警告] ${from} が録画を開始しました`);
-            } else {
-                statusDot.classList.remove('rec');
-                statusText.textContent = "監視中";
+        setInterval(() => {
+            ctx.drawImage(document.getElementById('main-video'), 0, 0, canvas.width, canvas.height);
+            const curr = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            if (prev) {
+                let diff = 0;
+                for (let i = 0; i < curr.length; i += 4) diff += Math.abs(curr[i] - prev[i]);
+                if (diff > 35000 && !recording) {
+                    recording = true;
+                    conn.send({ type: 'alert', name: myName });
+                    const rec = new MediaRecorder(stream, { mimeType: 'video/webm' });
+                    const chunks = [];
+                    rec.ondataavailable = e => chunks.push(e.data);
+                    rec.onstop = () => {
+                        const blob = new Blob(chunks, { type: 'video/webm' });
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(blob);
+                        a.download = `${myName}_${Date.now()}.webm`;
+                        a.click();
+                        recording = false;
+                        conn.send({ type: 'idle' });
+                    };
+                    rec.start();
+                    setTimeout(() => rec.stop(), 10000);
+                }
             }
-        }
-        if (data.type === 'tts') {
-            const uttr = new SpeechSynthesisUtterance(data.text);
-            uttr.lang = 'ja-JP';
-            window.speechSynthesis.speak(uttr);
-            addLog(`TTS受信: ${data.text}`);
-        }
+            prev = curr;
+        }, 800);
     }
 
-    function broadcastTTS() {
-        const txt = document.getElementById('tts-input').value;
+    // --- モニター側 ---
+    function addThumb(id, stream) {
+        if (document.getElementById(`t-${id}`)) return;
+        const list = document.getElementById('thumb-list');
+        const card = document.createElement('div');
+        card.id = `t-${id}`;
+        card.className = 'thumb-card';
+        card.innerHTML = `<video autoplay playsinline muted></video><div class="thumb-name" id="name-${id}">Loading...</div>`;
+        
+        const v = card.querySelector('video');
+        v.srcObject = stream;
+        
+        card.onclick = () => {
+            document.querySelectorAll('.thumb-card').forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+            const main = document.getElementById('main-video');
+            main.srcObject = stream;
+            main.play();
+        };
+
+        list.appendChild(card);
+        if (list.children.length === 1) card.click();
+    }
+
+    function broadcast() {
+        const txt = document.getElementById('tts-msg').value;
         if (!txt) return;
         Object.values(connections).forEach(c => c.send({ type: 'tts', text: txt }));
-        addLog(`全カメラへ送信: ${txt}`);
-        document.getElementById('tts-input').value = '';
+        addLog(`[TTS] 全員へ送信: ${txt}`);
+        document.getElementById('tts-msg').value = '';
     }
 </script>
+
 </body>
 </html>
