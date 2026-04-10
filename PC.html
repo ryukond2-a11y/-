@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Monitor-Side</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        video { width: 100%; background: #000; }
+    </style>
+</head>
+<body>
+    <div class="grid" id="monitor"></div>
+    <input type="text" id="peer-id" placeholder="スマホのIDを入力">
+    <button onclick="connect()">カメラ追加</button>
+
+    <script>
+        const peer = new Peer();
+        function connect() {
+            const id = document.getElementById('peer-id').value;
+            const call = peer.call(id, new MediaStream()); // 空のストリームで呼び出し
+            call.on('stream', remoteStream => {
+                const video = document.createElement('video');
+                video.srcObject = remoteStream;
+                video.autoplay = true;
+                video.playsinline = true;
+                document.getElementById('monitor').appendChild(video);
+            });
+        }
+    </script>
+</body>
+</html>
